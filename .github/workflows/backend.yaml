@@ -1,0 +1,56 @@
+name: Backend CI Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Verify saved model artifacts
+        run: |
+          python -c "
+          import joblib
+
+          base = joblib.load('artifacts/baseline_model.joblib')
+          assert 'model' in base and 'scaler' in base, 'baseline_model.joblib missing model/scaler'
+
+          unnorm = joblib.load('artifacts/bottom_unnorm_model.joblib')
+          assert 'constituents' in unnorm and len(unnorm['constituents']) == 5, 'bottom_unnorm_model.joblib missing 5 constituents'
+
+          norm = joblib.load('artifacts/bottom_norm_model.joblib')
+          assert 'constituents' in norm and len(norm['constituents']) == 5, 'bottom_norm_model.joblib missing 5 constituents'
+
+          print('All 3 model artifacts verified successfully.')
+          "
+
+      - name: Test FastAPI startup and health endpoint
+        run: |
+          python -c "
+          from fastapi.testclient import TestClient
+          from backend.main import app
+
+          client = TestClient(app)
+          res = client.get('/api/health')
+          assert res.status_code == 200, f'Health check failed: {res.status_code}'
+          print('Health check response:', res.json())
+          "
