@@ -1,16 +1,23 @@
-# React + Vite
+# Nifty 50 Model Comparator (React frontend)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Calls `GET /api/predict` on the FastAPI backend and compares the 3 models
+(Top-Down, Bottom-Up Unnormalized, Bottom-Up Normalized).
 
-Currently, two official plugins are available:
+## Run locally
+```bash
+# terminal 1 (repo root)
+pip install fastapi uvicorn yfinance joblib scikit-learn xgboost pandas
+uvicorn backend.main:app --port 8000
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+# terminal 2
+cd frontend
+npm install
+npm run dev        # http://localhost:5173  (proxies /api -> :8000)
+```
 
-## React Compiler
+## Production (Docker / Render)
+`npm run build` outputs `frontend/dist`. Copy it to `./static` at the repo root
+(`cp -r frontend/dist static`) and FastAPI serves it on the same origin
+(see the `StaticFiles` mount at the bottom of `backend/main.py`).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Env vars: `VITE_API_URL` (API base, default same-origin), `VITE_PROXY_TARGET` (dev proxy target).

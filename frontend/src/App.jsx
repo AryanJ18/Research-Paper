@@ -1,122 +1,124 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchPredictions } from "./api.js";
+import {
+  MarketHeader,
+  ModelCard,
+  ComparisonChart,
+  ComparisonTable,
+  ConstituentsTable,
+} from "./components.jsx";
 
-function App() {
-  const [count, setCount] = useState(0)
+const AUTO_REFRESH_MS = 60_000;
+
+export default function App() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [fetchedAt, setFetchedAt] = useState(null);
+  const [auto, setAuto] = useState(false);
+  const abortRef = useRef(null);
+
+  const load = useCallback(async () => {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setLoading(true);
+    setError("");
+    try {
+      const json = await fetchPredictions(ctrl.signal);
+      setData(json);
+      setFetchedAt(new Date());
+    } catch (e) {
+      if (e.name !== "AbortError") setError(e.message || "Something went wrong");
+    } finally {
+      if (abortRef.current === ctrl) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    return () => abortRef.current?.abort();
+  }, [load]);
+
+  useEffect(() => {
+    if (!auto) return;
+    const id = setInterval(load, AUTO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [auto, load]);
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
+    <div className="page">
+      <header className="top">
         <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
+          <p className="eyebrow">Bottom-Up vs Top-Down</p>
+          <h1>Nifty 50 Model Comparator</h1>
+          <p className="sub">
+            Live next-day forecast from all three models, run on the latest market data.
           </p>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+        <div className="actions">
+          <button className="btn" onClick={load} disabled={loading}>
+            {loading ? "Running models…" : "Run predictions"}
+          </button>
+          <label className="check">
+            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+            Auto-refresh every 60s
+          </label>
+          {fetchedAt && (
+            <span className="muted small">Updated {fetchedAt.toLocaleTimeString()}</span>
+          )}
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      {error && (
+        <div className="error" role="alert">
+          <strong>Couldn’t get predictions.</strong> {error}
+          <div className="small">
+            Check the FastAPI server is running and that Yahoo Finance data is reachable.
+          </div>
+        </div>
+      )}
+
+      {!data && loading && (
+        <div className="skeleton" aria-busy="true">
+          Fetching live data and running three models… the first call can take 10–20 seconds.
+        </div>
+      )}
+
+      {data && (
+        <main className={loading ? "dim" : ""}>
+          <MarketHeader market={data.market} />
+
+          <section>
+            <h2>Model outputs</h2>
+            <div className="cards">
+              {data.models.map((m) => (
+                <ModelCard key={m.id} model={m} current={data.market.current_price} />
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h2>Comparison</h2>
+            <ComparisonChart models={data.models} />
+            <ComparisonTable models={data.models} current={data.market.current_price} />
+          </section>
+
+          <section>
+            <h2>Top 5 constituents</h2>
+            <p className="muted small">
+              Inputs to the two bottom-up models. Predicted return and signal come from the
+              normalized model.
+            </p>
+            <ConstituentsTable rows={data.constituents} />
+          </section>
+        </main>
+      )}
+
+      <footer className="muted small">
+        Research project, not financial advice. Paper metrics (RMSE, MAPE, MDA) are from the
+        backtest, not live accuracy.
+      </footer>
+    </div>
+  );
 }
-
-export default App
